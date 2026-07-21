@@ -345,3 +345,10 @@ code { background: #f1eff9; padding: 2px 6px; border-radius: 6px; }
     grid-column: auto;
   }
 }
+
+.refund-manager { display: grid; gap: 1rem; max-width: 760px; }
+.refund-manager label { display: grid; gap: .45rem; font-weight: 700; }
+.refund-manager input, .refund-manager select { width: 100%; }
+.refund-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
+.refund-summary span { padding: .85rem; border: 1px solid var(--border, #ddd); border-radius: 12px; background: rgba(255,255,255,.65); }
+@media (max-width: 700px) { .refund-summary { grid-template-columns: 1fr; } }

@@ -109,6 +109,7 @@ export async function POST(request: Request) {
         mode: "payment",
         customer_email: body.email!.trim(),
         payment_method_types: ["card"],
+        allow_promotion_codes: true,
         line_items: orderedItems.map((item) => ({
           quantity: 1,
           price_data: {

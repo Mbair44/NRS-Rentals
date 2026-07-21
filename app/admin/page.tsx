@@ -1,6 +1,7 @@
 import Link from "next/link";
 import BlockedDatesManager from "@/components/BlockedDatesManager";
 import InventoryManager from "@/components/InventoryManager";
+import RefundManager from "@/components/RefundManager";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,18 @@ type BlockedDateRow = {
   blocked_date: string;
   reason: string | null;
   inventory_items: { name: string } | { name: string }[] | null;
+};
+
+
+type RefundBookingRow = {
+  id: string;
+  booking_number: number;
+  status: string;
+  deposit_cents: number;
+  refunded_cents: number;
+  stripe_payment_intent_id: string | null;
+  booking_items: { rental_date: string }[] | null;
+  customers: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null;
 };
 
 type BookingRow = {
@@ -92,7 +105,7 @@ export default async function AdminPage() {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  const [bookingsResult, customerCountResult, inventoryResult, blockedResult] = await Promise.all([
+  const [bookingsResult, customerCountResult, inventoryResult, blockedResult, refundBookingsResult] = await Promise.all([
     supabase
       .from("booking_details")
       .select("*")
@@ -109,10 +122,16 @@ export default async function AdminPage() {
       .select("id,blocked_date,reason,inventory_items(name)")
       .gte("blocked_date", today)
       .order("blocked_date", { ascending: true }),
+    supabase
+      .from("bookings")
+      .select("id,booking_number,status,deposit_cents,refunded_cents,stripe_payment_intent_id,booking_items(rental_date),customers(first_name,last_name)")
+      .not("stripe_payment_intent_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(100),
   ]);
 
   const error =
-    bookingsResult.error || inventoryResult.error || blockedResult.error || customerCountResult.error;
+    bookingsResult.error || inventoryResult.error || blockedResult.error || customerCountResult.error || refundBookingsResult.error;
 
   if (error) {
     return (
@@ -134,6 +153,21 @@ export default async function AdminPage() {
   const bookings = (bookingsResult.data ?? []) as BookingRow[];
   const inventory = inventoryResult.data ?? [];
   const blockedDates = (blockedResult.data ?? []) as BlockedDateRow[];
+  const refundRows = (refundBookingsResult.data ?? []) as RefundBookingRow[];
+  const refundBookings = refundRows.map((booking) => {
+    const customer = Array.isArray(booking.customers) ? booking.customers[0] : booking.customers;
+    const item = booking.booking_items?.[0];
+    return {
+      id: booking.id,
+      booking_number: booking.booking_number,
+      customer_name: customer ? `${customer.first_name} ${customer.last_name}` : "Customer",
+      rental_date: item?.rental_date ?? "",
+      status: booking.status,
+      deposit_cents: booking.deposit_cents ?? 0,
+      refunded_cents: booking.refunded_cents ?? 0,
+      stripe_payment_intent_id: booking.stripe_payment_intent_id,
+    };
+  }).filter((booking) => booking.deposit_cents > booking.refunded_cents);
   const activeBookings = bookings.filter((booking) =>
     ["pending_payment", "paid", "confirmed"].includes(booking.status)
   );
@@ -156,6 +190,7 @@ export default async function AdminPage() {
             <a href="#bookings">Bookings</a>
             <a href="#inventory">Inventory</a>
             <a href="#blocked">Blocked dates</a>
+            <a href="#refunds">Refunds</a>
           </nav>
           <div className="admin-sidebar-footer">
             <Link href="/book">Open booking page</Link>
@@ -289,6 +324,16 @@ export default async function AdminPage() {
               />
             </section>
           </div>
+
+          <section className="admin-panel" id="refunds">
+            <div className="admin-panel-header">
+              <div>
+                <span className="eyebrow">Payments</span>
+                <h2>Stripe refunds</h2>
+              </div>
+            </div>
+            <RefundManager initialBookings={refundBookings} />
+          </section>
 
           <p className="admin-security-note">
             This dashboard uses a private server-side Supabase key. Add authentication before deploying it publicly.

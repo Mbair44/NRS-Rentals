@@ -25,15 +25,31 @@ export async function POST(request: Request) {
   }
 
   if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
-    const session = event.data.object as Stripe.Checkout.Session;
-    const bookingId = session.metadata?.booking_id;
-    if (bookingId && session.payment_status === "paid") {
-      const depositCents = Number(session.metadata?.deposit_cents || session.amount_total || 0);
+    const eventSession = event.data.object as Stripe.Checkout.Session;
+    const bookingId = eventSession.metadata?.booking_id;
+    if (bookingId && eventSession.payment_status === "paid") {
+      const session = await stripe.checkout.sessions.retrieve(eventSession.id, {
+        expand: ["discounts.promotion_code", "discounts.coupon"],
+      });
+      const originalTotalCents = Number(session.metadata?.total_cents || 0);
+      const amountPaidCents = Number(session.amount_total || 0);
+      const discountCents = Number(session.total_details?.amount_discount || 0);
+      const discount = session.discounts?.[0];
+      const promotionCode = discount && typeof discount !== "string" && discount.promotion_code;
+      const coupon = discount && typeof discount !== "string" && discount.coupon;
+      const promotionCodeId = typeof promotionCode === "string" ? promotionCode : promotionCode?.id || null;
+      const couponId = typeof coupon === "string" ? coupon : coupon?.id || null;
+
       await supabase.from("bookings").update({
         status: "confirmed",
         stripe_checkout_session_id: session.id,
         stripe_payment_intent_id: typeof session.payment_intent === "string" ? session.payment_intent : null,
-        deposit_cents: depositCents,
+        deposit_cents: amountPaidCents,
+        amount_paid_cents: amountPaidCents,
+        discount_cents: discountCents,
+        balance_due_cents: Math.max(0, originalTotalCents - amountPaidCents - discountCents),
+        stripe_promotion_code_id: promotionCodeId,
+        stripe_coupon_id: couponId,
         paid_at: new Date().toISOString(),
       }).eq("id", bookingId);
 
@@ -47,6 +63,24 @@ export async function POST(request: Request) {
     if (bookingId) {
       await supabase.from("bookings").update({ status: "expired" }).eq("id", bookingId).eq("status", "pending_payment");
       await supabase.from("booking_items").update({ status: "expired" }).eq("booking_id", bookingId).eq("status", "pending_payment");
+    }
+  }
+
+  if (event.type === "charge.refunded") {
+    const charge = event.data.object as Stripe.Charge;
+    const paymentIntentId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id;
+    if (paymentIntentId) {
+      const fullyRefunded = charge.refunded;
+      const update: Record<string, unknown> = {
+        refunded_cents: charge.amount_refunded,
+        refunded_at: new Date().toISOString(),
+      };
+      if (fullyRefunded) update.status = "refunded";
+      await supabase.from("bookings").update(update).eq("stripe_payment_intent_id", paymentIntentId);
+      if (fullyRefunded) {
+        const { data: booking } = await supabase.from("bookings").select("id").eq("stripe_payment_intent_id", paymentIntentId).single();
+        if (booking?.id) await supabase.from("booking_items").update({ status: "refunded" }).eq("booking_id", booking.id);
+      }
     }
   }
 

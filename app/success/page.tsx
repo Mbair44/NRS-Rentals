@@ -30,9 +30,10 @@ export default async function SuccessPage({ searchParams }: Props) {
       })
     : null;
   const bookingNumber = session?.metadata?.booking_number;
-  const depositCents = Number(session?.metadata?.deposit_cents || session?.amount_total || 0);
+  const depositCents = Number(session?.amount_total || 0);
+  const discountCents = Number(session?.total_details?.amount_discount || 0);
   const totalCents = Number(session?.metadata?.total_cents || 0);
-  const balanceCents = Math.max(0, totalCents - depositCents);
+  const balanceCents = Math.max(0, totalCents - depositCents - discountCents);
 
   return (
     <main className="section alt">
@@ -45,6 +46,7 @@ export default async function SuccessPage({ searchParams }: Props) {
           {paid ? (
             <>
               <p className="lead">Non-refundable deposit paid: <strong>{money(depositCents)}</strong></p>
+              {discountCents > 0 ? <p className="lead">Promotion discount: <strong>{money(discountCents)}</strong></p> : null}
               <p className="muted">Remaining balance: <strong>{money(balanceCents)}</strong>. Keep your confirmation number for your records.</p>
             </>
           ) : (
