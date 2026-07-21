@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { sendBookingSms } from "@/lib/sms";
 
 export const runtime = "nodejs";
 
@@ -65,6 +66,17 @@ const couponId =
       }).eq("id", bookingId);
 
       await supabase.from("booking_items").update({ status: "confirmed" }).eq("booking_id", bookingId);
+
+      try {
+        const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id;
+        if (paymentIntentId) {
+          const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ["latest_charge"] });
+          const charge = typeof paymentIntent.latest_charge === "object" ? paymentIntent.latest_charge as Stripe.Charge : null;
+          if (charge?.receipt_url) await supabase.from("bookings").update({ stripe_receipt_url: charge.receipt_url }).eq("id", bookingId);
+        }
+        const { data: current } = await supabase.from("bookings").select("confirmation_sms_sent_at").eq("id", bookingId).single();
+        if (!current?.confirmation_sms_sent_at) await sendBookingSms(bookingId, "confirmation");
+      } catch (smsError) { console.error("Confirmation SMS failed:", smsError); }
     }
   }
 

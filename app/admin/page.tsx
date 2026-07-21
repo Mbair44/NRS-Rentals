@@ -2,6 +2,7 @@ import Link from "next/link";
 import BlockedDatesManager from "@/components/BlockedDatesManager";
 import InventoryManager from "@/components/InventoryManager";
 import RefundManager from "@/components/RefundManager";
+import CommunicationsManager from "@/components/CommunicationsManager";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -105,7 +106,7 @@ export default async function AdminPage() {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  const [bookingsResult, customerCountResult, inventoryResult, blockedResult, refundBookingsResult] = await Promise.all([
+  const [bookingsResult, customerCountResult, inventoryResult, blockedResult, refundBookingsResult, smsTemplatesResult, smsLogsResult, smsBookingOptionsResult] = await Promise.all([
     supabase
       .from("booking_details")
       .select("*")
@@ -128,10 +129,13 @@ export default async function AdminPage() {
       .not("stripe_payment_intent_id", "is", null)
       .order("created_at", { ascending: false })
       .limit(100),
+    supabase.from("sms_templates").select("template_key,display_name,body,enabled").order("template_key"),
+    supabase.from("sms_messages").select("id,template_key,to_phone,body,status,error_message,created_at,sent_at,bookings(booking_number)").order("created_at", { ascending: false }).limit(100),
+    supabase.from("bookings").select("id,booking_number,customers(first_name,last_name)").in("status", ["paid","confirmed","completed"]).order("created_at", { ascending: false }).limit(100),
   ]);
 
   const error =
-    bookingsResult.error || inventoryResult.error || blockedResult.error || customerCountResult.error || refundBookingsResult.error;
+    bookingsResult.error || inventoryResult.error || blockedResult.error || customerCountResult.error || refundBookingsResult.error || smsTemplatesResult.error || smsLogsResult.error || smsBookingOptionsResult.error;
 
   if (error) {
     return (
@@ -191,6 +195,7 @@ export default async function AdminPage() {
             <a href="#inventory">Inventory</a>
             <a href="#blocked">Blocked dates</a>
             <a href="#refunds">Refunds</a>
+            <a href="#communications">Communications</a>
           </nav>
           <div className="admin-sidebar-footer">
             <Link href="/book">Open booking page</Link>
@@ -333,6 +338,16 @@ export default async function AdminPage() {
               </div>
             </div>
             <RefundManager initialBookings={refundBookings} />
+          </section>
+
+
+          <section className="admin-panel" id="communications">
+            <div className="admin-panel-header"><div><span className="eyebrow">Customer messages</span><h2>SMS communications</h2></div></div>
+            <CommunicationsManager
+              initialTemplates={(smsTemplatesResult.data ?? []) as never}
+              initialLogs={(smsLogsResult.data ?? []) as never}
+              bookings={(smsBookingOptionsResult.data ?? []).map((row: any) => { const c = Array.isArray(row.customers) ? row.customers[0] : row.customers; return { id: row.id, booking_number: row.booking_number, customer_name: c ? `${c.first_name} ${c.last_name}` : "Customer" }; })}
+            />
           </section>
 
           <p className="admin-security-note">
