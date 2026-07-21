@@ -42,12 +42,17 @@ export async function POST(request: NextRequest) {
   const imageUrl = cleanText(body.imageUrl, 1000) || null;
   const priceCents = parsePriceCents(body.priceDollars);
   const active = body.active !== false;
+  const allowQuantity = body.allowQuantity === true;
+  const stockQuantity = Number(body.stockQuantity);
 
   if (!name) {
     return NextResponse.json({ error: "Inventory name is required." }, { status: 400 });
   }
   if (priceCents === null) {
     return NextResponse.json({ error: "Enter a valid price." }, { status: 400 });
+  }
+  if (!Number.isInteger(stockQuantity) || stockQuantity < 1 || stockQuantity > 10000) {
+    return NextResponse.json({ error: "Inventory quantity must be a whole number between 1 and 10,000." }, { status: 400 });
   }
 
   const baseSlug = slugify(name) || `item-${Date.now()}`;
@@ -77,8 +82,10 @@ export async function POST(request: NextRequest) {
       image_url: imageUrl,
       daily_price_cents: priceCents,
       active,
+      allow_quantity: allowQuantity,
+      stock_quantity: stockQuantity,
     })
-    .select("id,name,slug,description,daily_price_cents,image_url,active,created_at")
+    .select("id,name,slug,description,daily_price_cents,image_url,active,allow_quantity,stock_quantity,created_at")
     .single();
 
   if (error) {
@@ -105,12 +112,17 @@ export async function PATCH(request: NextRequest) {
   const imageUrl = cleanText(body.imageUrl, 1000) || null;
   const priceCents = parsePriceCents(body.priceDollars);
   const active = Boolean(body.active);
+  const allowQuantity = body.allowQuantity === true;
+  const stockQuantity = Number(body.stockQuantity);
 
   if (!id || !name) {
     return NextResponse.json({ error: "Inventory item and name are required." }, { status: 400 });
   }
   if (priceCents === null) {
     return NextResponse.json({ error: "Enter a valid price." }, { status: 400 });
+  }
+  if (!Number.isInteger(stockQuantity) || stockQuantity < 1 || stockQuantity > 10000) {
+    return NextResponse.json({ error: "Inventory quantity must be a whole number between 1 and 10,000." }, { status: 400 });
   }
 
   const { data, error } = await supabase
@@ -121,9 +133,11 @@ export async function PATCH(request: NextRequest) {
       image_url: imageUrl,
       daily_price_cents: priceCents,
       active,
+      allow_quantity: allowQuantity,
+      stock_quantity: stockQuantity,
     })
     .eq("id", id)
-    .select("id,name,slug,description,daily_price_cents,image_url,active,created_at")
+    .select("id,name,slug,description,daily_price_cents,image_url,active,allow_quantity,stock_quantity,created_at")
     .single();
 
   if (error) {

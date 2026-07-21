@@ -415,3 +415,33 @@ code { background: #f1eff9; padding: 2px 6px; border-radius: 6px; }
   .selection-bar { bottom: 8px; margin-inline: 0; border-radius: 14px; }
   .selection-bar button { max-width: 48%; }
 }
+
+/* Quantity-based rental controls */
+.quantity-picker {
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: stretch;
+  gap: .65rem;
+  margin-top: auto;
+}
+.quantity-picker button {
+  border: 1px solid var(--border, #d8d8d8);
+  border-radius: 12px;
+  background: #fff;
+  font-size: 1.5rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.quantity-picker button:disabled { opacity: .35; cursor: not-allowed; }
+.quantity-picker > div {
+  display: flex;
+  min-height: 48px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: rgba(0,0,0,.04);
+}
+.quantity-picker strong { font-size: 1.1rem; }
+.quantity-picker span { font-size: .72rem; color: var(--muted, #666); }
+.inventory-stock-label { margin: .35rem 0; font-size: .82rem; font-weight: 650; }

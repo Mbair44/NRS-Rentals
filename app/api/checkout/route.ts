@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
+type RequestedItem = { inventoryItemId?: string; quantity?: number };
 type CheckoutBody = {
-  inventoryItemIds?: string[];
+  items?: RequestedItem[];
   rentalDate?: string;
   firstName?: string;
   lastName?: string;
@@ -35,44 +36,40 @@ export async function POST(request: Request) {
       if (!hasText(body[key])) return NextResponse.json({ error: `Please enter your ${label}.` }, { status: 400 });
     }
 
-    const requestedItemIds = Array.isArray(body.inventoryItemIds)
-      ? body.inventoryItemIds.filter(hasText)
+    const requestedItems = Array.isArray(body.items)
+      ? body.items
+          .filter((item) => hasText(item.inventoryItemId) && Number.isInteger(item.quantity) && Number(item.quantity) > 0)
+          .map((item) => ({ inventoryItemId: item.inventoryItemId!.trim(), quantity: Number(item.quantity) }))
       : [];
-    const uniqueItemIds = [...new Set(requestedItemIds)];
-    if (uniqueItemIds.length === 0) {
-      return NextResponse.json({ error: "Please choose at least one rental item." }, { status: 400 });
+    if (requestedItems.length === 0) return NextResponse.json({ error: "Please choose at least one rental item." }, { status: 400 });
+    if (new Set(requestedItems.map((item) => item.inventoryItemId)).size !== requestedItems.length) {
+      return NextResponse.json({ error: "The same rental item cannot appear more than once." }, { status: 400 });
     }
-    if (uniqueItemIds.length !== requestedItemIds.length) {
-      return NextResponse.json({ error: "The same rental item cannot be added twice." }, { status: 400 });
-    }
-    if (body.agreementAccepted !== "true" && body.agreementAccepted !== true) {
-      return NextResponse.json({ error: "Please accept the rental agreement and safety rules." }, { status: 400 });
-    }
-    if (body.depositAccepted !== "true" && body.depositAccepted !== true) {
-      return NextResponse.json({ error: "Please acknowledge the non-refundable deposit policy." }, { status: 400 });
-    }
+    if (body.agreementAccepted !== "true" && body.agreementAccepted !== true) return NextResponse.json({ error: "Please accept the rental agreement and safety rules." }, { status: 400 });
+    if (body.depositAccepted !== "true" && body.depositAccepted !== true) return NextResponse.json({ error: "Please acknowledge the non-refundable deposit policy." }, { status: 400 });
 
     const stripeKey = process.env.STRIPE_SECRET_KEY;
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
     const supabase = getSupabaseAdmin();
-    if (!stripeKey || !supabase) {
-      return NextResponse.json({ error: "Stripe or Supabase is not configured." }, { status: 503 });
-    }
+    if (!stripeKey || !supabase) return NextResponse.json({ error: "Stripe or Supabase is not configured." }, { status: 503 });
 
+    const ids = requestedItems.map((item) => item.inventoryItemId);
     const { data: items, error: itemError } = await supabase
       .from("inventory_items")
-      .select("id,name,daily_price_cents,active")
-      .in("id", uniqueItemIds)
+      .select("id,name,daily_price_cents,active,allow_quantity,stock_quantity")
+      .in("id", ids)
       .eq("active", true);
-    if (itemError || !items || items.length !== uniqueItemIds.length) {
-      return NextResponse.json({ error: "One or more selected rental items are no longer available." }, { status: 404 });
-    }
+    if (itemError || !items || items.length !== ids.length) return NextResponse.json({ error: "One or more selected rental items are no longer available." }, { status: 404 });
 
     const itemsById = new Map(items.map((item) => [item.id, item]));
-    const orderedItems = uniqueItemIds.map((id) => itemsById.get(id)!);
+    const orderedItems = requestedItems.map((requested) => ({ ...itemsById.get(requested.inventoryItemId)!, quantity: requested.quantity }));
+    for (const item of orderedItems) {
+      if (!item.allow_quantity && item.quantity !== 1) return NextResponse.json({ error: `${item.name} can only be added once.` }, { status: 400 });
+      if (item.quantity > item.stock_quantity) return NextResponse.json({ error: `Only ${item.stock_quantity} of ${item.name} are in inventory.` }, { status: 400 });
+    }
 
-    const { data, error: bookingError } = await supabase.rpc("create_public_booking_multi", {
-      p_inventory_item_ids: uniqueItemIds,
+    const { data, error: bookingError } = await supabase.rpc("create_public_booking_quantities", {
+      p_items: requestedItems,
       p_rental_date: body.rentalDate,
       p_first_name: body.firstName!.trim(),
       p_last_name: body.lastName!.trim(),
@@ -85,23 +82,16 @@ export async function POST(request: Request) {
       p_delivery_zip: body.zipCode!.trim(),
       p_notes: body.notes?.trim() ?? "",
     });
-
     if (bookingError) {
       const message = bookingError.message || "Could not create the reservation.";
-      const conflict = /already|reserved|unavailable|blocked/i.test(message);
-      return NextResponse.json({ error: message }, { status: conflict ? 409 : 400 });
+      return NextResponse.json({ error: message }, { status: /available|reserved|blocked|inventory/i.test(message) ? 409 : 400 });
     }
 
     const booking = Array.isArray(data) ? data[0] : data;
-    if (!booking?.booking_id) {
-      return NextResponse.json({ error: "The reservation was not created. Please try again." }, { status: 500 });
-    }
+    if (!booking?.booking_id) return NextResponse.json({ error: "The reservation was not created. Please try again." }, { status: 500 });
 
-    const totalCents = orderedItems.reduce((sum, item) => sum + item.daily_price_cents, 0);
-    const depositCents = orderedItems.reduce(
-      (sum, item) => sum + Math.round(item.daily_price_cents * 0.25),
-      0
-    );
+    const totalCents = orderedItems.reduce((sum, item) => sum + item.daily_price_cents * item.quantity, 0);
+    const depositCents = Math.round(totalCents * 0.25);
     const stripe = new Stripe(stripeKey);
     let session: Stripe.Checkout.Session;
     try {
@@ -111,25 +101,25 @@ export async function POST(request: Request) {
         payment_method_types: ["card"],
         allow_promotion_codes: true,
         line_items: orderedItems.map((item) => ({
-          quantity: 1,
+          quantity: item.quantity,
           price_data: {
             currency: "usd",
             unit_amount: Math.round(item.daily_price_cents * 0.25),
             product_data: {
               name: `25% Non-Refundable Deposit — ${item.name}`,
-              description: `Reserves ${body.rentalDate}. Item total: ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(item.daily_price_cents / 100)}.`,
+              description: `Reserves ${body.rentalDate}. Unit rental price: ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(item.daily_price_cents / 100)}.`,
             },
           },
         })),
         success_url: `${siteUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${siteUrl}/book?items=${uniqueItemIds.join(",")}&cancelled=1`,
+        cancel_url: `${siteUrl}/book?cart=${orderedItems.map((item) => `${item.id}:${item.quantity}`).join(",")}&cancelled=1`,
         expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
         metadata: {
           booking_id: String(booking.booking_id),
           booking_number: String(booking.booking_number),
           rental_date: String(body.rentalDate),
-          inventory_item_ids: uniqueItemIds.join(","),
-          item_count: String(uniqueItemIds.length),
+          inventory_item_ids: ids.join(","),
+          item_count: String(orderedItems.reduce((sum, item) => sum + item.quantity, 0)),
           total_cents: String(totalCents),
           deposit_cents: String(depositCents),
         },
