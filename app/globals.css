@@ -210,3 +210,138 @@ code { background: #f1eff9; padding: 2px 6px; border-radius: 6px; }
 @media (max-width: 600px) {
   .inventory-gallery, .block-date-form { grid-template-columns: 1fr; }
 }
+
+/* Admin inventory editor */
+.inventory-manager {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.inventory-admin-key {
+  max-width: 420px;
+}
+
+.inventory-form {
+  display: grid;
+  gap: 1rem;
+  padding: 1.1rem;
+  border: 1px solid var(--border, #dedbd4);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.admin-panel-header.compact {
+  margin-bottom: 0;
+}
+
+.inventory-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.inventory-form-wide {
+  grid-column: 1 / -1;
+}
+
+.inventory-form textarea {
+  resize: vertical;
+}
+
+.price-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding-left: 0.75rem;
+  border: 1px solid #cfcac0;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.price-input-wrap input {
+  border: 0;
+  padding-left: 0;
+  width: 100%;
+}
+
+.inventory-active-toggle {
+  grid-column: 1 / -1;
+}
+
+.inventory-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.inventory-admin-card {
+  overflow: hidden;
+  border: 1px solid var(--border, #dedbd4);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.inventory-admin-card img,
+.inventory-image-placeholder {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+}
+
+.inventory-image-placeholder {
+  display: grid;
+  place-items: center;
+  background: #f1efe9;
+  color: #726d64;
+}
+
+.inventory-admin-card-body {
+  display: grid;
+  gap: 0.65rem;
+  padding: 1rem;
+}
+
+.inventory-card-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.inventory-card-title-row h3,
+.inventory-admin-card-body p {
+  margin: 0;
+}
+
+.inventory-price {
+  font-size: 1.35rem;
+}
+
+.inventory-card-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.button.danger {
+  background: #9f2f2f;
+  color: #fff;
+  border-color: #9f2f2f;
+}
+
+.success-message {
+  margin: 0;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .inventory-form-grid,
+  .inventory-admin-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inventory-form-wide,
+  .inventory-active-toggle {
+    grid-column: auto;
+  }
+}

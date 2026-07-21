@@ -1,5 +1,6 @@
 import Link from "next/link";
 import BlockedDatesManager from "@/components/BlockedDatesManager";
+import InventoryManager from "@/components/InventoryManager";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -101,7 +102,7 @@ export default async function AdminPage() {
     supabase.from("customers").select("id", { count: "exact", head: true }),
     supabase
       .from("inventory_items")
-      .select("id,name,daily_price_cents,active")
+      .select("id,name,slug,description,daily_price_cents,image_url,active,created_at")
       .order("created_at", { ascending: true }),
     supabase
       .from("blocked_dates")
@@ -272,18 +273,7 @@ export default async function AdminPage() {
                   <h2>Inventory</h2>
                 </div>
               </div>
-              <div className="admin-list">
-                {inventory.map((item) => (
-                  <div className="admin-list-row" key={item.id}>
-                    <div>
-                      <strong>{item.name}</strong>
-                      <br />
-                      <span className="muted">{item.active ? "Available for booking" : "Inactive"}</span>
-                    </div>
-                    <strong>{money(item.daily_price_cents)}</strong>
-                  </div>
-                ))}
-              </div>
+              <InventoryManager initialInventory={inventory} />
             </section>
 
             <section className="admin-panel" id="blocked">

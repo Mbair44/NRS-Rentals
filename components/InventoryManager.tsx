@@ -1,0 +1,213 @@
+"use client";
+
+import { useMemo, useState, type FormEvent } from "react";
+
+type InventoryItem = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  daily_price_cents: number;
+  image_url: string | null;
+  active: boolean;
+};
+
+type FormState = {
+  name: string;
+  description: string;
+  imageUrl: string;
+  priceDollars: string;
+  active: boolean;
+};
+
+const emptyForm: FormState = {
+  name: "",
+  description: "",
+  imageUrl: "",
+  priceDollars: "",
+  active: true,
+};
+
+function money(cents: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+  }).format(cents / 100);
+}
+
+export default function InventoryManager({ initialInventory }: { initialInventory: InventoryItem[] }) {
+  const [items, setItems] = useState(initialInventory);
+  const [adminKey, setAdminKey] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<FormState>(emptyForm);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const editingItem = useMemo(
+    () => items.find((item) => item.id === editingId) ?? null,
+    [editingId, items]
+  );
+
+  function updateForm<K extends keyof FormState>(key: K, value: FormState[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function beginEdit(item: InventoryItem) {
+    setEditingId(item.id);
+    setForm({
+      name: item.name,
+      description: item.description ?? "",
+      imageUrl: item.image_url ?? "",
+      priceDollars: (item.daily_price_cents / 100).toFixed(2),
+      active: item.active,
+    });
+    setMessage("");
+    document.getElementById("inventory-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function resetForm() {
+    setEditingId(null);
+    setForm(emptyForm);
+    setMessage("");
+  }
+
+  async function saveItem(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/admin/inventory", {
+        method: editingId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json", "x-admin-key": adminKey },
+        body: JSON.stringify({ id: editingId, ...form }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not save the inventory item.");
+
+      if (editingId) {
+        setItems((current) => current.map((item) => (item.id === editingId ? data.item : item)));
+      } else {
+        setItems((current) => [...current, data.item]);
+      }
+
+      setMessage(editingId ? "Inventory item updated." : "Inventory item added.");
+      setEditingId(null);
+      setForm(emptyForm);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Could not save the inventory item.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeItem(item: InventoryItem) {
+    const warning = item.active
+      ? `Delete ${item.name}? If it has booking history, it will be deactivated instead so past reservations remain intact.`
+      : `Permanently delete ${item.name}? If it has booking history, it will remain safely archived.`;
+
+    if (!confirm(warning)) return;
+    setBusy(true);
+    setMessage("");
+
+    try {
+      const response = await fetch(`/api/admin/inventory?id=${encodeURIComponent(item.id)}`, {
+        method: "DELETE",
+        headers: { "x-admin-key": adminKey },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not delete the inventory item.");
+
+      if (data.archived) {
+        setItems((current) => current.map((row) => (row.id === item.id ? { ...row, active: false } : row)));
+        setMessage(data.message);
+      } else {
+        setItems((current) => current.filter((row) => row.id !== item.id));
+        setMessage("Inventory item deleted.");
+      }
+
+      if (editingId === item.id) resetForm();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Could not delete the inventory item.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="inventory-manager">
+      <div className="notice">
+        Enter the private admin key stored in Vercel as <code>ADMIN_ACCESS_KEY</code>. Prices are entered in dollars and stored safely in cents.
+      </div>
+
+      <label className="inventory-admin-key">
+        Admin key
+        <input type="password" value={adminKey} onChange={(event) => setAdminKey(event.target.value)} required />
+      </label>
+
+      <form id="inventory-editor" className="inventory-form" onSubmit={saveItem}>
+        <div className="admin-panel-header compact">
+          <div>
+            <span className="eyebrow">{editingItem ? "Edit rental" : "New rental"}</span>
+            <h3>{editingItem ? editingItem.name : "Add inventory item"}</h3>
+          </div>
+          {editingItem ? (
+            <button className="button secondary small" type="button" onClick={resetForm}>Cancel edit</button>
+          ) : null}
+        </div>
+
+        <div className="inventory-form-grid">
+          <label>
+            Name
+            <input value={form.name} onChange={(event) => updateForm("name", event.target.value)} placeholder="Classic Bounce House" required />
+          </label>
+          <label>
+            Daily price
+            <div className="price-input-wrap">
+              <span>$</span>
+              <input type="number" min="0" step="0.01" value={form.priceDollars} onChange={(event) => updateForm("priceDollars", event.target.value)} placeholder="350.00" required />
+            </div>
+          </label>
+          <label className="inventory-form-wide">
+            Description
+            <textarea value={form.description} onChange={(event) => updateForm("description", event.target.value)} placeholder="Describe the rental, dimensions, capacity, and included setup." rows={3} />
+          </label>
+          <label className="inventory-form-wide">
+            Image URL
+            <input type="url" value={form.imageUrl} onChange={(event) => updateForm("imageUrl", event.target.value)} placeholder="https://..." />
+          </label>
+          <label className="checkbox-row inventory-active-toggle">
+            <input type="checkbox" checked={form.active} onChange={(event) => updateForm("active", event.target.checked)} />
+            Active and visible on the booking site
+          </label>
+        </div>
+
+        <button className="button small" disabled={busy || !adminKey}>
+          {busy ? "Saving..." : editingItem ? "Save changes" : "Add inventory item"}
+        </button>
+        {message ? <p className="success-message">{message}</p> : null}
+      </form>
+
+      <div className="inventory-admin-grid">
+        {items.length === 0 ? <p className="muted">No inventory items yet.</p> : items.map((item) => (
+          <article className="inventory-admin-card" key={item.id}>
+            {item.image_url ? <img src={item.image_url} alt={item.name} /> : <div className="inventory-image-placeholder">No image</div>}
+            <div className="inventory-admin-card-body">
+              <div className="inventory-card-title-row">
+                <h3>{item.name}</h3>
+                <span className={`status ${item.active ? "paid" : "cancelled"}`}>{item.active ? "Active" : "Inactive"}</span>
+              </div>
+              <strong className="inventory-price">{money(item.daily_price_cents)}</strong>
+              <p className="muted">{item.description || "No description yet."}</p>
+              <div className="inventory-card-actions">
+                <button className="button secondary small" type="button" disabled={busy || !adminKey} onClick={() => beginEdit(item)}>Edit</button>
+                <button className="button danger small" type="button" disabled={busy || !adminKey} onClick={() => removeItem(item)}>Delete</button>
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
