@@ -37,8 +37,19 @@ export async function POST(request: Request) {
       const discount = session.discounts?.[0];
       const promotionCode = discount && typeof discount !== "string" && discount.promotion_code;
       const coupon = discount && typeof discount !== "string" && discount.coupon;
-      const promotionCodeId = typeof promotionCode === "string" ? promotionCode : promotionCode?.id || null;
-      const couponId = typeof coupon === "string" ? coupon : coupon?.id || null;
+      const promotionCodeId =
+  typeof promotionCode === "string"
+    ? promotionCode
+    : promotionCode && typeof promotionCode === "object"
+      ? promotionCode.id
+      : null;
+
+const couponId =
+  typeof coupon === "string"
+    ? coupon
+    : coupon && typeof coupon === "object"
+      ? coupon.id
+      : null;
 
       await supabase.from("bookings").update({
         status: "confirmed",
