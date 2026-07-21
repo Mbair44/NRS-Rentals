@@ -1,7 +1,16 @@
 import Link from "next/link";
+import BlockedDatesManager from "@/components/BlockedDatesManager";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
+
+
+type BlockedDateRow = {
+  id: string;
+  blocked_date: string;
+  reason: string | null;
+  inventory_items: { name: string } | { name: string }[] | null;
+};
 
 type BookingRow = {
   id: string;
@@ -98,8 +107,7 @@ export default async function AdminPage() {
       .from("blocked_dates")
       .select("id,blocked_date,reason,inventory_items(name)")
       .gte("blocked_date", today)
-      .order("blocked_date", { ascending: true })
-      .limit(5),
+      .order("blocked_date", { ascending: true }),
   ]);
 
   const error =
@@ -124,7 +132,7 @@ export default async function AdminPage() {
 
   const bookings = (bookingsResult.data ?? []) as BookingRow[];
   const inventory = inventoryResult.data ?? [];
-  const blockedDates = blockedResult.data ?? [];
+  const blockedDates = (blockedResult.data ?? []) as BlockedDateRow[];
   const activeBookings = bookings.filter((booking) =>
     ["pending_payment", "paid", "confirmed"].includes(booking.status)
   );
@@ -285,24 +293,10 @@ export default async function AdminPage() {
                   <h2>Blocked dates</h2>
                 </div>
               </div>
-              <div className="admin-list">
-                {blockedDates.length === 0 ? (
-                  <p className="muted">No upcoming dates are manually blocked.</p>
-                ) : (
-                  blockedDates.map((item: any) => (
-                    <div className="admin-list-row" key={item.id}>
-                      <div>
-                        <strong>{displayDate(item.blocked_date)}</strong>
-                        <br />
-                        <span className="muted">
-                          {item.inventory_items?.name ?? "Rental item"}
-                          {item.reason ? ` · ${item.reason}` : ""}
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
+              <BlockedDatesManager
+                inventory={inventory.map((item) => ({ id: item.id, name: item.name }))}
+                initialBlockedDates={blockedDates}
+              />
             </section>
           </div>
 

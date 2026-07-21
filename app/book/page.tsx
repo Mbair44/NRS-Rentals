@@ -5,7 +5,7 @@ import { getActiveInventory } from "@/lib/inventory";
 export const dynamic = "force-dynamic";
 
 type Props = {
-  searchParams: Promise<{ item?: string }>;
+  searchParams: Promise<{ item?: string; items?: string }>;
 };
 
 function iso(date: Date) {
@@ -15,30 +15,44 @@ function iso(date: Date) {
 export default async function BookPage({ searchParams }: Props) {
   const params = await searchParams;
   const inventory = await getActiveInventory();
-  const selectedItem = inventory.find((item) => item.id === params.item) ?? inventory[0];
 
-  if (!selectedItem) {
+  if (inventory.length === 0) {
     return (
       <main className="section alt">
         <div className="container card">
           <h2>No active rental inventory was found.</h2>
-          <p>Confirm that the Classic Bounce House is active in Supabase.</p>
+          <p>Confirm that at least one inventory item is active in Supabase.</p>
         </div>
       </main>
     );
   }
 
+  const requestedIds = (params.items ?? params.item ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const validIds = requestedIds.filter((id) => inventory.some((item) => item.id === id));
+  const initialItemIds = validIds.length > 0 ? [...new Set(validIds)] : [inventory[0].id];
+
   const start = new Date();
   start.setDate(1);
   const end = new Date(start.getFullYear(), start.getMonth() + 13, 0);
-  const unavailableDates = await getUnavailableDates(selectedItem.id, iso(start), iso(end));
+
+  const availabilityResults = await Promise.all(
+    inventory.map(async (item) => [
+      item.id,
+      (await getUnavailableDates(item.id, iso(start), iso(end))).map((row) => row.rental_date),
+    ] as const)
+  );
+  const unavailableDatesByItem = Object.fromEntries(availabilityResults);
 
   return (
     <main className="section alt">
       <div className="container">
         <BookingClient
-          unavailableDates={unavailableDates}
-          inventoryItem={selectedItem}
+          inventory={inventory}
+          unavailableDatesByItem={unavailableDatesByItem}
+          initialItemIds={initialItemIds}
         />
       </div>
     </main>

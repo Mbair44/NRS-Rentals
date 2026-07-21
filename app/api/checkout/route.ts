@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 type CheckoutBody = {
-  inventoryItemId?: string;
+  inventoryItemIds?: string[];
   rentalDate?: string;
   firstName?: string;
   lastName?: string;
@@ -27,13 +27,23 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as CheckoutBody;
     const required: Array<[keyof CheckoutBody, string]> = [
-      ["inventoryItemId", "rental item"], ["rentalDate", "rental date"],
-      ["firstName", "first name"], ["lastName", "last name"], ["email", "email"],
-      ["phone", "phone"], ["address", "delivery address"], ["city", "city"],
+      ["rentalDate", "rental date"], ["firstName", "first name"], ["lastName", "last name"],
+      ["email", "email"], ["phone", "phone"], ["address", "delivery address"], ["city", "city"],
       ["zipCode", "ZIP code"], ["startTime", "event start time"], ["endTime", "event end time"],
     ];
     for (const [key, label] of required) {
       if (!hasText(body[key])) return NextResponse.json({ error: `Please enter your ${label}.` }, { status: 400 });
+    }
+
+    const requestedItemIds = Array.isArray(body.inventoryItemIds)
+      ? body.inventoryItemIds.filter(hasText)
+      : [];
+    const uniqueItemIds = [...new Set(requestedItemIds)];
+    if (uniqueItemIds.length === 0) {
+      return NextResponse.json({ error: "Please choose at least one rental item." }, { status: 400 });
+    }
+    if (uniqueItemIds.length !== requestedItemIds.length) {
+      return NextResponse.json({ error: "The same rental item cannot be added twice." }, { status: 400 });
     }
     if (body.agreementAccepted !== "true" && body.agreementAccepted !== true) {
       return NextResponse.json({ error: "Please accept the rental agreement and safety rules." }, { status: 400 });
@@ -49,18 +59,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Stripe or Supabase is not configured." }, { status: 503 });
     }
 
-    const { data: item, error: itemError } = await supabase
+    const { data: items, error: itemError } = await supabase
       .from("inventory_items")
       .select("id,name,daily_price_cents,active")
-      .eq("id", body.inventoryItemId!)
-      .eq("active", true)
-      .single();
-    if (itemError || !item) {
-      return NextResponse.json({ error: "That rental item is no longer available." }, { status: 404 });
+      .in("id", uniqueItemIds)
+      .eq("active", true);
+    if (itemError || !items || items.length !== uniqueItemIds.length) {
+      return NextResponse.json({ error: "One or more selected rental items are no longer available." }, { status: 404 });
     }
 
-    const { data, error: bookingError } = await supabase.rpc("create_public_booking", {
-      p_inventory_item_id: body.inventoryItemId,
+    const itemsById = new Map(items.map((item) => [item.id, item]));
+    const orderedItems = uniqueItemIds.map((id) => itemsById.get(id)!);
+
+    const { data, error: bookingError } = await supabase.rpc("create_public_booking_multi", {
+      p_inventory_item_ids: uniqueItemIds,
       p_rental_date: body.rentalDate,
       p_first_name: body.firstName!.trim(),
       p_last_name: body.lastName!.trim(),
@@ -76,7 +88,7 @@ export async function POST(request: Request) {
 
     if (bookingError) {
       const message = bookingError.message || "Could not create the reservation.";
-      const conflict = /already|reserved|unavailable/i.test(message);
+      const conflict = /already|reserved|unavailable|blocked/i.test(message);
       return NextResponse.json({ error: message }, { status: conflict ? 409 : 400 });
     }
 
@@ -85,7 +97,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "The reservation was not created. Please try again." }, { status: 500 });
     }
 
-    const depositCents = Math.round(item.daily_price_cents * 0.25);
+    const totalCents = orderedItems.reduce((sum, item) => sum + item.daily_price_cents, 0);
+    const depositCents = orderedItems.reduce(
+      (sum, item) => sum + Math.round(item.daily_price_cents * 0.25),
+      0
+    );
     const stripe = new Stripe(stripeKey);
     let session: Stripe.Checkout.Session;
     try {
@@ -93,38 +109,40 @@ export async function POST(request: Request) {
         mode: "payment",
         customer_email: body.email!.trim(),
         payment_method_types: ["card"],
-        line_items: [{
+        line_items: orderedItems.map((item) => ({
           quantity: 1,
           price_data: {
             currency: "usd",
-            unit_amount: depositCents,
+            unit_amount: Math.round(item.daily_price_cents * 0.25),
             product_data: {
               name: `25% Non-Refundable Deposit — ${item.name}`,
-              description: `Reserves ${body.rentalDate}. Remaining balance: ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format((item.daily_price_cents - depositCents) / 100)}.`,
+              description: `Reserves ${body.rentalDate}. Item total: ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(item.daily_price_cents / 100)}.`,
             },
           },
-        }],
+        })),
         success_url: `${siteUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${siteUrl}/book?item=${item.id}&cancelled=1`,
+        cancel_url: `${siteUrl}/book?items=${uniqueItemIds.join(",")}&cancelled=1`,
         expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
         metadata: {
           booking_id: String(booking.booking_id),
           booking_number: String(booking.booking_number),
           rental_date: String(body.rentalDate),
-          inventory_item_id: String(item.id),
-          total_cents: String(item.daily_price_cents),
+          inventory_item_ids: uniqueItemIds.join(","),
+          item_count: String(uniqueItemIds.length),
+          total_cents: String(totalCents),
           deposit_cents: String(depositCents),
         },
       });
     } catch (stripeError) {
       await supabase.from("bookings").update({ status: "expired" }).eq("id", booking.booking_id);
+      await supabase.from("booking_items").update({ status: "expired" }).eq("booking_id", booking.booking_id);
       throw stripeError;
     }
 
     await supabase.from("bookings").update({
       stripe_checkout_session_id: session.id,
       deposit_cents: depositCents,
-      balance_due_cents: item.daily_price_cents - depositCents,
+      balance_due_cents: totalCents - depositCents,
     }).eq("id", booking.booking_id);
 
     return NextResponse.json({ url: session.url });
