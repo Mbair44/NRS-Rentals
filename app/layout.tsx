@@ -12,7 +12,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <header className="header">
           <div className="container nav">
-            <Link className="brand" href="/">NRS Party Rentals</Link>
+            <Link className="brand" href="/" aria-label="NRS Party Rentals home">
+              <img className="brand-logo" src="/nrs-logo.png" alt="NRS Party Rentals" />
+            </Link>
             <nav className="navlinks">
               <Link href="/#rental">Rental</Link>
               <Link href="/book">Availability</Link>
@@ -24,7 +26,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {children}
         <footer>
           <div className="container">
-            <strong>NRS Party Rentals</strong>
+            <img className="footer-logo" src="/nrs-logo.png" alt="NRS Party Rentals" />
             <p>Bounce-house rentals in Gilbert, Chandler, and Mesa, Arizona.</p>
           </div>
         </footer>
