@@ -365,3 +365,53 @@ code { background: #f1eff9; padding: 2px 6px; border-radius: 6px; }
 .receipt-card { max-width:720px; margin:0 auto; }
 .receipt-row { display:flex; justify-content:space-between; gap:1rem; padding:.45rem 0; }
 @media(max-width:900px){.template-grid{grid-template-columns:1fr}.manual-sms-form{grid-template-columns:1fr}.manual-sms-form h3{grid-column:auto}}
+
+/* Gallery-first rental catalog */
+.catalog-heading { display: flex; justify-content: space-between; gap: 24px; align-items: end; }
+.catalog-count { flex: 0 0 auto; padding: 10px 15px; border-radius: 999px; background: white; border: 1px solid var(--border); font-weight: 800; }
+.catalog-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 16px; align-items: end; margin: 28px 0 8px; padding: 18px; background: white; border: 1px solid var(--border); border-radius: 20px; box-shadow: 0 8px 24px rgba(31,36,64,.05); }
+.catalog-toolbar label { margin: 0; }
+.catalog-toolbar label > span { display: block; margin-bottom: 7px; font-size: .82rem; font-weight: 800; color: var(--ink); }
+.catalog-toolbar input, .catalog-toolbar select { margin: 0; background: #fff; }
+.availability-banner { display: flex; align-items: center; gap: 7px; margin-top: 14px; padding: 13px 16px; border-radius: 14px; background: #f0edff; color: var(--ink); }
+.availability-banner button, .empty-catalog button { margin-left: auto; border: 0; background: transparent; color: var(--purple); font-weight: 900; cursor: pointer; text-decoration: underline; }
+.inventory-gallery { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; }
+.inventory-card { display: flex; flex-direction: column; cursor: default; }
+.inventory-card.unavailable { opacity: .68; }
+.inventory-media { position: relative; }
+.inventory-card img, .inventory-image-placeholder { height: 235px; }
+.selected-badge, .unavailable-badge { position: absolute; top: 14px; right: 14px; padding: 7px 11px; border-radius: 999px; font-size: .76rem; font-weight: 900; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+.selected-badge { background: var(--purple); color: white; }
+.unavailable-badge { background: #fff0f0; color: #9b2727; }
+.inventory-card-body { display: flex; flex: 1; flex-direction: column; }
+.inventory-card-head { align-items: start; }
+.catalog-price { white-space: nowrap; color: var(--purple); font-size: 1.05rem; }
+.catalog-description { margin: 2px 0 18px; }
+.catalog-add-button { width: 100%; margin-top: auto; padding: 12px 14px; border: 1px solid var(--purple); border-radius: 12px; background: white; color: var(--purple); font: inherit; font-weight: 900; cursor: pointer; }
+.catalog-add-button:hover { background: #f5f2ff; }
+.catalog-add-button.selected { background: var(--purple); color: white; }
+.catalog-add-button:disabled { border-color: var(--border); background: #f4f4f6; color: #777; cursor: not-allowed; }
+.empty-catalog { margin-top: 24px; padding: 48px 24px; text-align: center; border: 1px dashed var(--border); border-radius: 20px; background: white; }
+.empty-catalog button { margin: 8px 0 0; }
+.selection-bar { position: sticky; z-index: 20; bottom: 14px; display: none; align-items: center; justify-content: space-between; gap: 20px; max-width: 780px; margin: 28px auto 40px; padding: 15px 18px; border-radius: 18px; background: #211c3b; color: white; box-shadow: 0 16px 40px rgba(25,20,54,.3); }
+.selection-bar.visible { display: flex; }
+.selection-bar div { display: flex; flex-direction: column; gap: 2px; }
+.selection-bar span { opacity: .78; font-size: .88rem; }
+.selection-bar button { padding: 11px 15px; border: 0; border-radius: 11px; background: white; color: #211c3b; font-weight: 900; cursor: pointer; }
+#reservation-details { scroll-margin-top: 24px; }
+
+@media (max-width: 820px) {
+  .catalog-heading { align-items: start; }
+  .catalog-toolbar { grid-template-columns: 1fr; }
+  .inventory-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 560px) {
+  .catalog-heading { display: block; }
+  .catalog-count { display: inline-block; margin-top: 12px; }
+  .inventory-gallery { grid-template-columns: 1fr; }
+  .availability-banner { align-items: flex-start; flex-wrap: wrap; }
+  .availability-banner button { margin-left: 0; }
+  .selection-bar { bottom: 8px; margin-inline: 0; border-radius: 14px; }
+  .selection-bar button { max-width: 48%; }
+}

@@ -32,7 +32,7 @@ export default async function BookPage({ searchParams }: Props) {
     .map((id) => id.trim())
     .filter(Boolean);
   const validIds = requestedIds.filter((id) => inventory.some((item) => item.id === id));
-  const initialItemIds = validIds.length > 0 ? [...new Set(validIds)] : [inventory[0].id];
+  const initialItemIds = validIds.length > 0 ? [...new Set(validIds)] : [];
 
   const start = new Date();
   start.setDate(1);
