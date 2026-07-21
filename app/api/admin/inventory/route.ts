@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
   const name = cleanText(body.name, 120);
   const description = cleanText(body.description, 2000) || null;
   const imageUrl = cleanText(body.imageUrl, 1000) || null;
+  const imageUrls = Array.isArray(body.imageUrls) ? body.imageUrls.map((value: unknown) => cleanText(value, 1000)).filter(Boolean).slice(0, 20) : [];
   const priceCents = parsePriceCents(body.priceDollars);
   const active = body.active !== false;
   const allowQuantity = body.allowQuantity === true;
@@ -80,12 +81,13 @@ export async function POST(request: NextRequest) {
       slug,
       description,
       image_url: imageUrl,
+      image_urls: imageUrls,
       daily_price_cents: priceCents,
       active,
       allow_quantity: allowQuantity,
       stock_quantity: stockQuantity,
     })
-    .select("id,name,slug,description,daily_price_cents,image_url,active,allow_quantity,stock_quantity,created_at")
+    .select("id,name,slug,description,daily_price_cents,image_url,image_urls,active,allow_quantity,stock_quantity,created_at")
     .single();
 
   if (error) {
@@ -110,6 +112,7 @@ export async function PATCH(request: NextRequest) {
   const name = cleanText(body.name, 120);
   const description = cleanText(body.description, 2000) || null;
   const imageUrl = cleanText(body.imageUrl, 1000) || null;
+  const imageUrls = Array.isArray(body.imageUrls) ? body.imageUrls.map((value: unknown) => cleanText(value, 1000)).filter(Boolean).slice(0, 20) : [];
   const priceCents = parsePriceCents(body.priceDollars);
   const active = Boolean(body.active);
   const allowQuantity = body.allowQuantity === true;
@@ -131,13 +134,14 @@ export async function PATCH(request: NextRequest) {
       name,
       description,
       image_url: imageUrl,
+      image_urls: imageUrls,
       daily_price_cents: priceCents,
       active,
       allow_quantity: allowQuantity,
       stock_quantity: stockQuantity,
     })
     .eq("id", id)
-    .select("id,name,slug,description,daily_price_cents,image_url,active,allow_quantity,stock_quantity,created_at")
+    .select("id,name,slug,description,daily_price_cents,image_url,image_urls,active,allow_quantity,stock_quantity,created_at")
     .single();
 
   if (error) {

@@ -36,3 +36,13 @@ git add .
 git commit -m "Add admin inventory management"
 git push
 ```
+
+## Inventory photo uploads
+
+1. Run `supabase/inventory_image_uploads.sql` once in the Supabase SQL Editor.
+2. Redeploy the website.
+3. Open `/admin`, enter `ADMIN_ACCESS_KEY`, and edit or add an inventory item.
+4. Choose one or more photos under **Rental photos**.
+5. Click a thumbnail to select the cover image, then save the inventory item.
+
+Photos are stored in the public Supabase Storage bucket named `inventory-images`. The dashboard accepts JPG, PNG, WebP, and GIF files up to 8 MB each.

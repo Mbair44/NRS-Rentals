@@ -9,6 +9,7 @@ type InventoryItem = {
   description: string | null;
   daily_price_cents: number;
   image_url: string | null;
+  image_urls?: string[] | null;
   active: boolean;
   allow_quantity: boolean;
   stock_quantity: number;
@@ -18,6 +19,7 @@ type FormState = {
   name: string;
   description: string;
   imageUrl: string;
+  imageUrls: string[];
   priceDollars: string;
   active: boolean;
   allowQuantity: boolean;
@@ -28,6 +30,7 @@ const emptyForm: FormState = {
   name: "",
   description: "",
   imageUrl: "",
+  imageUrls: [],
   priceDollars: "",
   active: true,
   allowQuantity: false,
@@ -49,6 +52,7 @@ export default function InventoryManager({ initialInventory }: { initialInventor
   const [form, setForm] = useState<FormState>(emptyForm);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [uploading, setUploading] = useState(false);
 
   const editingItem = useMemo(
     () => items.find((item) => item.id === editingId) ?? null,
@@ -65,6 +69,7 @@ export default function InventoryManager({ initialInventory }: { initialInventor
       name: item.name,
       description: item.description ?? "",
       imageUrl: item.image_url ?? "",
+      imageUrls: item.image_urls?.length ? item.image_urls : (item.image_url ? [item.image_url] : []),
       priceDollars: (item.daily_price_cents / 100).toFixed(2),
       active: item.active,
       allowQuantity: item.allow_quantity,
@@ -78,6 +83,35 @@ export default function InventoryManager({ initialInventory }: { initialInventor
     setEditingId(null);
     setForm(emptyForm);
     setMessage("");
+  }
+
+
+  async function uploadImages(files: FileList | null) {
+    if (!files?.length) return;
+    if (!adminKey) { alert("Enter your admin key before uploading images."); return; }
+    setUploading(true);
+    try {
+      const payload = new FormData();
+      Array.from(files).forEach((file) => payload.append("files", file));
+      const response = await fetch("/api/admin/inventory-images", { method: "POST", headers: { "x-admin-key": adminKey }, body: payload });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not upload the images.");
+      setForm((current) => {
+        const imageUrls = [...current.imageUrls, ...data.urls].slice(0, 20);
+        return { ...current, imageUrls, imageUrl: current.imageUrl || imageUrls[0] || "" };
+      });
+      setMessage(`${data.urls.length} image${data.urls.length === 1 ? "" : "s"} uploaded.`);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Could not upload the images.");
+    } finally { setUploading(false); }
+  }
+
+  function makeCover(url: string) { setForm((current) => ({ ...current, imageUrl: url })); }
+  function removeImage(url: string) {
+    setForm((current) => {
+      const imageUrls = current.imageUrls.filter((image) => image !== url);
+      return { ...current, imageUrls, imageUrl: current.imageUrl === url ? (imageUrls[0] || "") : current.imageUrl };
+    });
   }
 
   async function saveItem(event: FormEvent) {
@@ -148,7 +182,12 @@ export default function InventoryManager({ initialInventory }: { initialInventor
           <label>Units in inventory<input type="number" min="1" max="10000" step="1" value={form.stockQuantity} onChange={(e) => updateForm("stockQuantity", e.target.value)} required /></label>
           <label className="checkbox-row inventory-active-toggle"><input type="checkbox" checked={form.allowQuantity} onChange={(e) => updateForm("allowQuantity", e.target.checked)} />Let customers choose a quantity</label>
           <label className="inventory-form-wide">Description<textarea value={form.description} onChange={(e) => updateForm("description", e.target.value)} placeholder="Describe the rental, dimensions, capacity, and included setup." rows={3} /></label>
-          <label className="inventory-form-wide">Image URL<input type="url" value={form.imageUrl} onChange={(e) => updateForm("imageUrl", e.target.value)} placeholder="https://..." /></label>
+          <div className="inventory-form-wide image-upload-panel">
+            <label>Rental photos<input className="image-file-input" type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple onChange={(e) => { uploadImages(e.target.files); e.currentTarget.value = ""; }} disabled={uploading || !adminKey} /></label>
+            <p className="muted">Upload up to 10 photos at once. JPG, PNG, WebP, or GIF; maximum 8 MB each. Click a photo to make it the cover.</p>
+            {uploading ? <p className="upload-status">Uploading photos…</p> : null}
+            {form.imageUrls.length ? <div className="admin-image-grid">{form.imageUrls.map((url) => <div className={`admin-image-thumb ${form.imageUrl === url ? "cover" : ""}`} key={url}><button type="button" className="cover-image-button" onClick={() => makeCover(url)} title="Make cover image"><img src={url} alt="Rental upload preview" />{form.imageUrl === url ? <span>Cover</span> : <span>Use as cover</span>}</button><button type="button" className="remove-image-button" onClick={() => removeImage(url)} aria-label="Remove image">×</button></div>)}</div> : null}
+          </div>
           <label className="checkbox-row inventory-active-toggle"><input type="checkbox" checked={form.active} onChange={(e) => updateForm("active", e.target.checked)} />Active and visible on the booking site</label>
         </div>
         <p className="muted">For inflatables, leave quantity selection off and inventory at 1. For chairs or tables, turn it on and enter your full stock count.</p>

@@ -116,7 +116,7 @@ export default async function AdminPage() {
     supabase.from("customers").select("id", { count: "exact", head: true }),
     supabase
       .from("inventory_items")
-      .select("id,name,slug,description,daily_price_cents,image_url,active,allow_quantity,stock_quantity,created_at")
+      .select("id,name,slug,description,daily_price_cents,image_url,image_urls,active,allow_quantity,stock_quantity,created_at")
       .order("created_at", { ascending: true }),
     supabase
       .from("blocked_dates")

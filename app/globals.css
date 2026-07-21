@@ -476,3 +476,17 @@ code { background: #f1eff9; padding: 2px 6px; border-radius: 6px; }
 @media(max-width:950px){.store-grid{grid-template-columns:repeat(2,1fr)}.steps-grid,.trust-strip-grid{grid-template-columns:repeat(2,1fr)}.footer-grid{grid-template-columns:1fr 1fr}.hero-visual{min-height:420px}.hero-visual>img{height:420px}}
 @media(max-width:760px){.v8-hero{padding-top:52px}.hero-visual{min-height:340px}.hero-visual>img{height:340px}.floating-note{display:none}.section-heading-row,.shop-toolbar,.cta-card{align-items:flex-start;flex-direction:column}.sort-control{width:100%;justify-content:space-between}.store-grid,.steps-grid,.occasions-grid,.service-grid,.faq-grid{grid-template-columns:1fr}.occasion-list{grid-template-columns:1fr 1fr}.footer-grid{grid-template-columns:1fr 1fr}.mobile-book-bar{display:block;position:fixed;z-index:40;left:12px;right:12px;bottom:10px}.mobile-book-bar a{display:block;text-align:center;padding:14px;border-radius:999px;background:var(--purple);color:white;font-weight:900;text-decoration:none;box-shadow:0 12px 28px rgba(31,36,64,.3)}body{padding-bottom:74px}}
 @media(max-width:520px){.store-grid,.trust-strip-grid,.occasion-list,.footer-grid{grid-template-columns:1fr}.trust-strip-grid>div{padding:4px 0}.store-media img,.store-placeholder{height:220px}.footer-bottom{flex-direction:column;gap:6px}.hero-trust{display:grid}.category-pills{flex-wrap:nowrap;overflow-x:auto;width:100%;padding-bottom:5px}.category-pills button{flex:0 0 auto}}
+
+/* Admin inventory image uploads */
+.image-upload-panel { padding: 18px; border: 1px dashed var(--border); border-radius: 16px; background: #faf9ff; }
+.image-file-input { padding: 12px; background: white; }
+.upload-status { font-weight: 800; color: var(--purple); }
+.admin-image-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; margin-top: 14px; }
+.admin-image-thumb { position: relative; overflow: hidden; border: 2px solid transparent; border-radius: 14px; background: white; }
+.admin-image-thumb.cover { border-color: var(--purple); box-shadow: 0 0 0 3px rgba(91,68,190,.12); }
+.cover-image-button { display: block; width: 100%; padding: 0; border: 0; background: transparent; cursor: pointer; text-align: left; }
+.cover-image-button img { display: block; width: 100%; height: 125px; object-fit: cover; }
+.cover-image-button span { display: block; padding: 7px 9px; font-size: .72rem; font-weight: 900; }
+.admin-image-thumb.cover .cover-image-button span { color: var(--purple); }
+.remove-image-button { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border: 0; border-radius: 50%; background: rgba(25,20,54,.9); color: white; font-size: 1.15rem; cursor: pointer; }
+@media(max-width:760px){.admin-image-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
