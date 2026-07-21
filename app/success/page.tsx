@@ -1,35 +1,55 @@
 import Link from "next/link";
+import Stripe from "stripe";
 
-type Props = {
-  searchParams: Promise<{ booking?: string; date?: string }>;
-};
+export const dynamic = "force-dynamic";
+
+type Props = { searchParams: Promise<{ session_id?: string }> };
+
+function money(cents: number) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
+}
 
 export default async function SuccessPage({ searchParams }: Props) {
-  const params = await searchParams;
-  const prettyDate = params.date
-    ? new Date(`${params.date}T12:00:00`).toLocaleDateString("en-US", {
-        weekday: "long",
-        month: "long",
-        day: "numeric",
-        year: "numeric",
+  const { session_id: sessionId } = await searchParams;
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  let session: Stripe.Checkout.Session | null = null;
+
+  if (sessionId && stripeKey) {
+    try {
+      session = await new Stripe(stripeKey).checkout.sessions.retrieve(sessionId);
+    } catch (error) {
+      console.error("Could not retrieve Stripe Checkout session:", error);
+    }
+  }
+
+  const paid = session?.payment_status === "paid";
+  const rentalDate = session?.metadata?.rental_date;
+  const prettyDate = rentalDate
+    ? new Date(`${rentalDate}T12:00:00`).toLocaleDateString("en-US", {
+        weekday: "long", month: "long", day: "numeric", year: "numeric",
       })
     : null;
+  const bookingNumber = session?.metadata?.booking_number;
+  const depositCents = Number(session?.metadata?.deposit_cents || session?.amount_total || 0);
+  const totalCents = Number(session?.metadata?.total_cents || 0);
+  const balanceCents = Math.max(0, totalCents - depositCents);
 
   return (
     <main className="section alt">
       <div className="container">
         <div className="form-card" style={{ maxWidth: 720, margin: "0 auto", textAlign: "center" }}>
-          <span className="eyebrow">Reservation received</span>
-          <h2>Your date is reserved!</h2>
-          {params.booking && (
-            <p className="lead">
-              Confirmation number: <strong>#{params.booking}</strong>
-            </p>
-          )}
+          <span className="eyebrow">{paid ? "Payment received" : "Payment verification"}</span>
+          <h2>{paid ? "Your reservation is confirmed!" : "We could not verify payment yet."}</h2>
+          {bookingNumber && <p className="lead">Confirmation number: <strong>#{bookingNumber}</strong></p>}
           {prettyDate && <p className="lead">Rental date: <strong>{prettyDate}</strong></p>}
-          <p className="muted">
-            This test reservation has been saved in Supabase. No payment was collected.
-          </p>
+          {paid ? (
+            <>
+              <p className="lead">Non-refundable deposit paid: <strong>{money(depositCents)}</strong></p>
+              <p className="muted">Remaining balance: <strong>{money(balanceCents)}</strong>. Keep your confirmation number for your records.</p>
+            </>
+          ) : (
+            <p className="muted">Please check your email for a Stripe receipt. Contact NRS Party Rentals if you completed payment but still see this message.</p>
+          )}
           <div className="actions" style={{ justifyContent: "center" }}>
             <Link className="button" href="/">Return Home</Link>
             <Link className="button secondary" href="/book">View Calendar</Link>

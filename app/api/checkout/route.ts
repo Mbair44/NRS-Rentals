@@ -2,85 +2,134 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
+type CheckoutBody = {
+  inventoryItemId?: string;
+  rentalDate?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  zipCode?: string;
+  startTime?: string;
+  endTime?: string;
+  notes?: string;
+  agreementAccepted?: string | boolean;
+  depositAccepted?: string | boolean;
+};
+
+function hasText(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const required = ["rentalDate","firstName","lastName","email","phone","address","city","zipCode","startTime","endTime"];
-    for (const key of required) {
-      if (!body[key]) return NextResponse.json({ error: `Missing ${key}.` }, { status: 400 });
+    const body = (await request.json()) as CheckoutBody;
+    const required: Array<[keyof CheckoutBody, string]> = [
+      ["inventoryItemId", "rental item"], ["rentalDate", "rental date"],
+      ["firstName", "first name"], ["lastName", "last name"], ["email", "email"],
+      ["phone", "phone"], ["address", "delivery address"], ["city", "city"],
+      ["zipCode", "ZIP code"], ["startTime", "event start time"], ["endTime", "event end time"],
+    ];
+    for (const [key, label] of required) {
+      if (!hasText(body[key])) return NextResponse.json({ error: `Please enter your ${label}.` }, { status: 400 });
     }
-    if (body.agreementAccepted !== "true") {
-      return NextResponse.json({ error: "Rental agreement must be accepted." }, { status: 400 });
+    if (body.agreementAccepted !== "true" && body.agreementAccepted !== true) {
+      return NextResponse.json({ error: "Please accept the rental agreement and safety rules." }, { status: 400 });
+    }
+    if (body.depositAccepted !== "true" && body.depositAccepted !== true) {
+      return NextResponse.json({ error: "Please acknowledge the non-refundable deposit policy." }, { status: 400 });
     }
 
     const stripeKey = process.env.STRIPE_SECRET_KEY;
-    const priceId = process.env.STRIPE_PRICE_ID;
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
     const supabase = getSupabaseAdmin();
-
-    if (!stripeKey || !priceId || !supabase) {
-      return NextResponse.json({
-        error: "Stripe or Supabase is not configured yet. Add the environment variables from .env.example."
-      }, { status: 503 });
+    if (!stripeKey || !supabase) {
+      return NextResponse.json({ error: "Stripe or Supabase is not configured." }, { status: 503 });
     }
 
-    const { data: existing } = await supabase
-      .from("bookings")
-      .select("id")
-      .eq("rental_date", body.rentalDate)
-      .in("status", ["pending_payment", "paid", "confirmed"])
-      .maybeSingle();
-
-    if (existing) {
-      return NextResponse.json({ error: "That date was just booked. Please choose another date." }, { status: 409 });
-    }
-
-    const { data: booking, error: insertError } = await supabase
-      .from("bookings")
-      .insert({
-        rental_date: body.rentalDate,
-        first_name: body.firstName,
-        last_name: body.lastName,
-        email: body.email,
-        phone: body.phone,
-        address: body.address,
-        city: body.city,
-        zip_code: body.zipCode,
-        event_start_time: body.startTime,
-        event_end_time: body.endTime,
-        notes: body.notes || "",
-        amount_cents: 35000,
-        status: "pending_payment",
-        agreement_accepted_at: new Date().toISOString()
-      })
-      .select("id")
+    const { data: item, error: itemError } = await supabase
+      .from("inventory_items")
+      .select("id,name,daily_price_cents,active")
+      .eq("id", body.inventoryItemId!)
+      .eq("active", true)
       .single();
-
-    if (insertError || !booking) {
-      return NextResponse.json({ error: insertError?.message || "Could not create reservation." }, { status: 500 });
+    if (itemError || !item) {
+      return NextResponse.json({ error: "That rental item is no longer available." }, { status: 404 });
     }
 
-    const stripe = new Stripe(stripeKey);
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      customer_email: body.email,
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${siteUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${siteUrl}/book?cancelled=1`,
-      metadata: {
-        booking_id: booking.id,
-        rental_date: body.rentalDate
-      }
+    const { data, error: bookingError } = await supabase.rpc("create_public_booking", {
+      p_inventory_item_id: body.inventoryItemId,
+      p_rental_date: body.rentalDate,
+      p_first_name: body.firstName!.trim(),
+      p_last_name: body.lastName!.trim(),
+      p_email: body.email!.trim(),
+      p_phone: body.phone!.trim(),
+      p_event_start_time: body.startTime,
+      p_event_end_time: body.endTime,
+      p_delivery_address: body.address!.trim(),
+      p_delivery_city: body.city,
+      p_delivery_zip: body.zipCode!.trim(),
+      p_notes: body.notes?.trim() ?? "",
     });
 
-    await supabase
-      .from("bookings")
-      .update({ stripe_checkout_session_id: session.id })
-      .eq("id", booking.id);
+    if (bookingError) {
+      const message = bookingError.message || "Could not create the reservation.";
+      const conflict = /already|reserved|unavailable/i.test(message);
+      return NextResponse.json({ error: message }, { status: conflict ? 409 : 400 });
+    }
+
+    const booking = Array.isArray(data) ? data[0] : data;
+    if (!booking?.booking_id) {
+      return NextResponse.json({ error: "The reservation was not created. Please try again." }, { status: 500 });
+    }
+
+    const depositCents = Math.round(item.daily_price_cents * 0.25);
+    const stripe = new Stripe(stripeKey);
+    let session: Stripe.Checkout.Session;
+    try {
+      session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        customer_email: body.email!.trim(),
+        payment_method_types: ["card"],
+        line_items: [{
+          quantity: 1,
+          price_data: {
+            currency: "usd",
+            unit_amount: depositCents,
+            product_data: {
+              name: `25% Non-Refundable Deposit — ${item.name}`,
+              description: `Reserves ${body.rentalDate}. Remaining balance: ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format((item.daily_price_cents - depositCents) / 100)}.`,
+            },
+          },
+        }],
+        success_url: `${siteUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${siteUrl}/book?item=${item.id}&cancelled=1`,
+        expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
+        metadata: {
+          booking_id: String(booking.booking_id),
+          booking_number: String(booking.booking_number),
+          rental_date: String(body.rentalDate),
+          inventory_item_id: String(item.id),
+          total_cents: String(item.daily_price_cents),
+          deposit_cents: String(depositCents),
+        },
+      });
+    } catch (stripeError) {
+      await supabase.from("bookings").update({ status: "expired" }).eq("id", booking.booking_id);
+      throw stripeError;
+    }
+
+    await supabase.from("bookings").update({
+      stripe_checkout_session_id: session.id,
+      deposit_cents: depositCents,
+      balance_due_cents: item.daily_price_cents - depositCents,
+    }).eq("id", booking.booking_id);
 
     return NextResponse.json({ url: session.url });
   } catch (error) {
-    console.error(error);
-    return NextResponse.json({ error: "Unexpected checkout error." }, { status: 500 });
+    console.error("Checkout error:", error);
+    return NextResponse.json({ error: "Something went wrong while opening secure checkout." }, { status: 500 });
   }
 }
