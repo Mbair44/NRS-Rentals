@@ -32,3 +32,4 @@ Routes:
 ## Database
 
 The required SQL scripts are in `supabase/`. The project assumes the schema, live availability function, and public booking function have already been run in Supabase.
+# NRS-Rentals
